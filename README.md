@@ -10,6 +10,8 @@ A real-time speech-to-text application that listens for wake words and automatic
 - **Real-Time Processing**: Uses VAD (Voice Activity Detection) to detect when you stop speaking
 - **Dual Engine**: Combines Vosk for wake word detection and Whisper for accurate transcription
 - **Audio Amplification**: Automatically amplifies low audio levels for better recognition
+- **Automatic Model Download**: Models are downloaded automatically on first use
+- **Flexible Model Selection**: Choose between small (fast) and large (accurate) models via CLI
 
 ## Requirements
 
@@ -41,25 +43,39 @@ For non-macOS systems, also install:
 pip install pyautogui
 ```
 
-4. Download Vosk models:
-```bash
-# English model (included in repo)
-wget https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip
-unzip vosk-model-small-en-us-0.15.zip
-
-# Portuguese model (included in repo)
-wget https://alphacephei.com/vosk/models/vosk-model-small-pt-0.3.zip
-unzip vosk-model-small-pt-0.3.zip
-```
+The models will be downloaded automatically when you first run the application.
 
 ## Usage
 
 ### Basic Usage
 
-1. Run the main application:
+Run with default settings (small models for fast performance):
 ```bash
 python stt.py
 ```
+
+### Advanced Usage
+
+```bash
+# Use large models for better accuracy
+python stt.py --model-en large --model-pt large --whisper-model medium
+
+# List available audio devices
+python stt.py --list-devices
+
+# Use specific models
+python stt.py --model-en small --model-pt large --whisper-model base
+```
+
+**Command-line Options:**
+- `--model-en {small,large}`: English Vosk model size (default: small)
+- `--model-pt {small,large}`: Portuguese Vosk model size (default: small)
+- `--whisper-model {tiny,base,small,medium,large}`: Whisper model size (default: base)
+- `--list-devices`: List available audio devices and exit
+
+### Usage Steps
+
+1. Run the application with your desired model configuration
 
 2. Select your microphone device (if multiple are available)
 
@@ -95,34 +111,32 @@ Test Vosk wake word detection:
 python test_vosk.py
 ```
 
-## Better Accuracy with Larger Models
+## Model Information
 
-The repository includes small models for quick setup. For better accuracy, download larger models:
+### Available Models
 
-### Vosk Models
+The application automatically downloads the models you select. Here are the available options:
 
-Browse available models at: https://alphacephei.com/vosk/models
+**Vosk Models (Wake Word Detection):**
+- English:
+  - `small`: 40 MB - Fast, good for most use cases
+  - `large`: 2.3 GB (Gigaspeech) - Best accuracy
+- Portuguese:
+  - `small`: 31 MB - Fast, basic accuracy
+  - `large`: 1.6 GB - Much better accuracy
 
-For English, try:
-- `vosk-model-en-us-0.22` (1.8 GB) - Much better accuracy
-- `vosk-model-en-us-0.42-gigaspeech` (2.3 GB) - Best accuracy
+**Whisper Models (Transcription):**
+- `tiny`: 40 MB - Fastest, lowest accuracy
+- `base`: 150 MB - Good balance (default)
+- `small`: 500 MB - Better accuracy
+- `medium`: 1.5 GB - High accuracy
+- `large`: 3 GB - Best accuracy
 
-For Portuguese:
-- `vosk-model-pt-fb-v0.1.1-20220516_2113` (1.6 GB) - Better accuracy
+### Model Selection Guide
 
-### Whisper Models
-
-Change the model size in `stt.py` line 87:
-```python
-whisper_model = whisper.load_model("base")  # Change to "small", "medium", "large"
-```
-
-Model sizes:
-- `tiny`: 40 MB
-- `base`: 150 MB (default)
-- `small`: 500 MB
-- `medium`: 1.5 GB
-- `large`: 3 GB
+- **For speed**: Use small Vosk models + tiny/base Whisper
+- **For accuracy**: Use large Vosk models + medium/large Whisper
+- **Balanced**: Use small Vosk models + small/medium Whisper
 
 ## Troubleshooting
 
