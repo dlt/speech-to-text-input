@@ -5,10 +5,30 @@ import webrtcvad
 import collections
 import json
 import os
+import time
+import subprocess
+import sys
 from vosk import Model, KaldiRecognizer
 
 # Debug mode
 DEBUG = os.environ.get('DEBUG', '').lower() in ('1', 'true', 'yes')
+
+# Platform-specific keyboard typing
+def type_text(text):
+    """Type text at current cursor position"""
+    if sys.platform == "darwin":  # macOS
+        # Use osascript to type text
+        script = f'tell application "System Events" to keystroke "{text}"'
+        subprocess.run(["osascript", "-e", script])
+    else:
+        # For other platforms, we'd need pyautogui
+        try:
+            import pyautogui
+            pyautogui.typewrite(text)
+        except ImportError:
+            print("❌ pyautogui not installed. Run: pip install pyautogui")
+            print(f"📋 Text copied to clipboard: {text}")
+            return
 
 # Audio constants
 RATE = 16000
@@ -20,7 +40,7 @@ AUDIO_GAIN = 10.0  # Amplification factor
 
 # VAD config
 vad = webrtcvad.Vad(1)  # Lower sensitivity (1 instead of 2)
-MAX_SILENT = int(2000 / CHUNK_MS)  # 2 seconds instead of 5
+MAX_SILENT = int(1000 / CHUNK_MS)  # 2 seconds instead of 5
 
 # Setup audio
 pa = pyaudio.PyAudio()
@@ -83,6 +103,7 @@ except Exception as e:
     exit(1)
 
 print("🎤 Say 'transcribe' (EN) or 'transcreva' (PT) to begin...")
+print("📌 The transcribed text will be typed at your cursor position")
 
 if DEBUG:
     # Test audio stream
@@ -113,6 +134,7 @@ if DEBUG:
         print("❌ No audio data captured!")
 
 print("\n🎯 Listening for wake words...")
+print("💡 Tip: Click where you want the text to appear before speaking")
 
 
 def detect_wake_word():
@@ -204,10 +226,33 @@ try:
         if DEBUG:
             print("🧠 Transcribing with Whisper...")
         result = whisper_model.transcribe(audio, language=lang)
-        print("📝 Whisper Result:", result["text"])
+        text = result["text"].strip()
+        
+        if text:
+            print(f"📝 Transcribed: {text}")
+            
+            # Small delay to ensure user is ready
+            print("✍️  Typing in 0.5 seconds...")
+            time.sleep(0.5)
+            
+            # Type the text where the cursor is
+            type_text(text)
+            
+            # Audio feedback - system sound
+            if sys.platform == "darwin":
+                subprocess.run(["afplay", "/System/Library/Sounds/Glass.aiff"], capture_output=True)
+            
+            print("✅ Text typed at cursor position")
+        else:
+            print("⚠️  No text was transcribed")
 
 except KeyboardInterrupt:
     print("🛑 Exiting.")
+except Exception as e:
+    print(f"❌ Error: {e}")
+    if DEBUG:
+        import traceback
+        traceback.print_exc()
 finally:
     stream.stop_stream()
     stream.close()
