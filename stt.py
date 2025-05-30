@@ -13,6 +13,7 @@ import urllib.request
 import zipfile
 from typing import Dict, Optional, Tuple, List
 from vosk import Model, KaldiRecognizer
+from pathlib import Path
 
 
 # Model configurations
@@ -42,6 +43,53 @@ MODELS = {
         }
     }
 }
+
+
+class SettingsManager:
+    """Manages application settings and preferences."""
+
+    def __init__(self):
+        self.settings_dir = Path.home() / '.stt_config'
+        self.settings_file = self.settings_dir / 'settings.json'
+        self.settings = self._load_settings()
+
+
+    def _load_settings(self) -> Dict:
+        """Load settings from file or return defaults"""
+        if self.settings_file.exists():
+            try:
+                with open(self.settings_file, 'r') as f:
+                    return json.load(f)
+            except Exception as e:
+                print(f"⚠️  Error loading settings: {e}")
+        return {}
+
+
+    def _save_settings(self) -> None:
+        """Save current settings to file"""
+        try:
+            self.settings_dir.mkdir(exist_ok=True)
+            with open(self.settings_file, 'w') as f:
+                json.dump(self.settings, f, indent=2)
+        except Exception as e:
+            print(f"⚠️  Error saving settings: {e}")
+
+
+    def get_audio_device(self) -> Optional[Tuple[int, str]]:
+        """Get saved audio device preference"""
+        if 'audio_device' in self.settings:
+            return (self.settings['audio_device']['index'],
+                    self.settings['audio_device']['name'])
+        return None
+
+
+    def save_audio_device(self, index: int, name: str) -> None:
+        """Save audio device preference"""
+        self.settings['audio_device'] = {
+            'index': index,
+            'name': name
+        }
+        self._save_settings()
 
 
 class TextTyper:
@@ -144,7 +192,8 @@ class AudioManager:
     """Manages audio input stream and device selection."""
 
     def __init__(self, rate: int = 16000, chunk_ms: int = 30, channels: int = 1,
-                 audio_gain: float = 10.0, debug: bool = False):
+                 audio_gain: float = 10.0, debug: bool = False,
+                 settings_manager: Optional[SettingsManager] = None):
         self.rate = rate
         self.chunk_ms = chunk_ms
         self.chunk = int(rate * chunk_ms / 1000)
@@ -155,6 +204,7 @@ class AudioManager:
         self.pa = pyaudio.PyAudio()
         self.stream = None
         self.input_device_index = None
+        self.settings_manager = settings_manager
 
 
     def get_available_devices(self) -> List[Tuple[int, str]]:
@@ -181,7 +231,23 @@ class AudioManager:
             print("❌ No microphone devices found.")
             return False
 
-        # Device selection
+        # Check for saved device preference
+        saved_device = None
+        if self.settings_manager:
+            saved_device = self.settings_manager.get_audio_device()
+            if saved_device:
+                # Verify saved device still exists
+                if any(d[0] == saved_device[0] and d[1] == saved_device[1] for d in devices):
+                    self.input_device_index = saved_device[0]
+                    print(f"🎙️ Using saved audio device: {saved_device[1]}")
+                    print(f"   Device index: [{self.input_device_index}]")
+                    if self.debug:
+                        print(f"🔊 Audio gain set to {self.audio_gain}x")
+                    return True
+                else:
+                    print(f"⚠️  Saved device '{saved_device[1]}' no longer available")
+
+        # Manual device selection
         if self.debug or len(devices) > 1:
             print("🔍 Available input devices:")
             for i, name in devices:
@@ -202,7 +268,14 @@ class AudioManager:
         else:
             self.input_device_index = devices[0][0]
 
-        print(f"\n🎙️ Using device index [{self.input_device_index}]")
+        # Find device name and save preference
+        device_name = next((name for idx, name in devices if idx == self.input_device_index), "Unknown")
+        if self.settings_manager:
+            self.settings_manager.save_audio_device(self.input_device_index, device_name)
+            print(f"💾 Saved audio device preference")
+
+        print(f"\n🎙️ Using device: {device_name}")
+        print(f"   Device index: [{self.input_device_index}]")
         if self.debug:
             print(f"🔊 Audio gain set to {self.audio_gain}x")
         return True
@@ -397,8 +470,9 @@ class SpeechToText:
         self.debug = os.environ.get('DEBUG', '').lower() in ('1', 'true', 'yes')
 
         # Initialize components
+        self.settings_manager = SettingsManager()
         self.model_manager = ModelManager(args.model_en, args.model_pt, args.whisper_model)
-        self.audio_manager = AudioManager(debug=self.debug)
+        self.audio_manager = AudioManager(debug=self.debug, settings_manager=self.settings_manager)
         self.text_typer = TextTyper()
         self.wake_word_detector = None
         self.transcriber = None
@@ -406,6 +480,16 @@ class SpeechToText:
 
     def setup(self) -> bool:
         """Initialize all components"""
+        # Handle reset audio device option
+        if self.args.reset_audio_device:
+            if 'audio_device' in self.settings_manager.settings:
+                del self.settings_manager.settings['audio_device']
+                self.settings_manager._save_settings()
+                print("✅ Audio device preference reset")
+            else:
+                print("ℹ️  No saved audio device preference to reset")
+            return False
+
         # Select audio device
         if self.args.list_devices:
             self.audio_manager.select_device(list_only=True)
@@ -519,6 +603,8 @@ def main():
                         default='base', help='Whisper model size (default: base)')
     parser.add_argument('--list-devices', action='store_true',
                         help='List available audio devices and exit')
+    parser.add_argument('--reset-audio-device', action='store_true',
+                        help='Reset saved audio device preference')
 
     args = parser.parse_args()
 
