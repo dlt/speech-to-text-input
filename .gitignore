@@ -13,3 +13,6 @@ vosk-model-*/
 .vscode/
 .idea/
 *.swp
+
+*.zip
+*.log
