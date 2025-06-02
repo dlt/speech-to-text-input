@@ -11,6 +11,8 @@ import subprocess
 import sys
 import urllib.request
 import zipfile
+import signal
+import threading
 from typing import Dict, Optional, Tuple, List
 from vosk import Model, KaldiRecognizer
 from pathlib import Path
@@ -205,6 +207,8 @@ class AudioManager:
         self.stream = None
         self.input_device_index = None
         self.settings_manager = settings_manager
+        self._stream_lock = threading.Lock()
+        self._last_read_time = time.time()
 
 
     def get_available_devices(self) -> List[Tuple[int, str]]:
@@ -330,21 +334,153 @@ class AudioManager:
             print("❌ No audio data captured!")
 
 
-    def read_chunk(self) -> np.ndarray:
-        """Read and amplify audio chunk"""
-        data = self.stream.read(self.chunk, exception_on_overflow=False)
-        # Amplify audio
-        audio_array = np.frombuffer(data, dtype=np.int16).astype(np.float32)
-        audio_array = audio_array * self.audio_gain
-        audio_array = np.clip(audio_array, -32768, 32767).astype(np.int16)
-        return audio_array
+    def read_chunk(self) -> Optional[np.ndarray]:
+        """Read and amplify audio chunk with timeout protection"""
+
+        # Use a thread to read audio with timeout
+        result = [None]
+        exception = [None]
+
+        def _read_audio():
+            try:
+                with self._stream_lock:
+                    # First check if stream is still valid
+                    if not self.stream:
+                        return
+
+                    # Try to check if stream is active (this might fail if device disconnected)
+                    try:
+                        if not self.stream.is_active():
+                            return
+                    except:
+                        # Stream object is corrupted
+                        return
+
+                    # Read with multiple safety measures
+                    try:
+                        data = self.stream.read(self.chunk, exception_on_overflow=False)
+                        result[0] = data
+                    except OSError as e:
+                        # This catches the PaMacCore error
+                        if "err='-50'" in str(e) or "Unknown Error" in str(e):
+                            exception[0] = e
+                            return
+                        raise
+            except Exception as e:
+                exception[0] = e
+
+        # Run the read in a thread with timeout
+        read_thread = threading.Thread(target=_read_audio)
+        read_thread.daemon = True
+        read_thread.start()
+
+        # Wait for read to complete with timeout
+        read_thread.join(timeout=0.5)  # 500ms timeout
+
+        if read_thread.is_alive():
+            # Read is stuck, likely due to device disconnection
+            print("⚠️  Audio read timeout - device may be disconnected")
+            return None
+
+        if exception[0]:
+            if self.debug or "PaMacCore" in str(exception[0]):
+                print(f"❌ Audio read error: {exception[0]}")
+            return None
+
+        if result[0] is None:
+            return None
+
+        try:
+            # Amplify audio
+            audio_array = np.frombuffer(result[0], dtype=np.int16).astype(np.float32)
+            audio_array = audio_array * self.audio_gain
+            audio_array = np.clip(audio_array, -32768, 32767).astype(np.int16)
+            self._last_read_time = time.time()
+            return audio_array
+        except Exception as e:
+            if self.debug:
+                print(f"❌ Audio processing error: {e}")
+            return None
+
+
+    def is_stream_active(self) -> bool:
+        """Check if the audio stream is still active"""
+        try:
+            return self.stream and self.stream.is_active()
+        except:
+            return False
+
+
+    def restart_stream(self) -> bool:
+        """Restart the audio stream (useful after device disconnection)"""
+        try:
+            with self._stream_lock:
+                # Close existing stream if any
+                if self.stream:
+                    try:
+                        self.stream.stop_stream()
+                        self.stream.close()
+                    except:
+                        pass  # Ignore errors when closing a dead stream
+                    finally:
+                        self.stream = None
+
+            # Wait a moment for device to stabilize
+            time.sleep(0.5)
+
+            # Re-initialize PyAudio to refresh device list
+            self.pa.terminate()
+            self.pa = pyaudio.PyAudio()
+
+            # Check if the previously selected device is still available
+            devices = self.get_available_devices()
+            device_available = any(d[0] == self.input_device_index for d in devices)
+
+            if not device_available:
+                print(f"⚠️  Previous audio device (index {self.input_device_index}) no longer available")
+                print("🔍 Attempting to select a new device...")
+
+                # Try to find a device with similar name from saved preference
+                saved_device = self.settings_manager.get_audio_device() if self.settings_manager else None
+                if saved_device:
+                    for idx, name in devices:
+                        if saved_device[1] in name or name in saved_device[1]:
+                            self.input_device_index = idx
+                            print(f"🎙️ Found similar device: {name}")
+                            break
+                    else:
+                        # No similar device found, use default
+                        if devices:
+                            self.input_device_index = devices[0][0]
+                            print(f"🎙️ Using default device: {devices[0][1]}")
+                        else:
+                            print("❌ No audio devices available")
+                            return False
+                else:
+                    # No saved preference, use default
+                    if devices:
+                        self.input_device_index = devices[0][0]
+                        print(f"🎙️ Using default device: {devices[0][1]}")
+                    else:
+                        print("❌ No audio devices available")
+                        return False
+
+            # Start new stream
+            return self.start_stream()
+
+        except Exception as e:
+            print(f"❌ Failed to restart audio stream: {e}")
+            return False
 
 
     def cleanup(self) -> None:
         """Clean up audio resources"""
         if self.stream:
-            self.stream.stop_stream()
-            self.stream.close()
+            try:
+                self.stream.stop_stream()
+                self.stream.close()
+            except:
+                pass  # Ignore errors if stream is already dead
         self.pa.terminate()
 
 
@@ -420,7 +556,7 @@ class Transcriber:
         self.debug = debug
 
 
-    def record_until_silence(self) -> np.ndarray:
+    def record_until_silence(self) -> Optional[np.ndarray]:
         """Record audio until silence is detected"""
         print("🎙️ Recording... Speak now.")
         frames = []
@@ -432,6 +568,19 @@ class Transcriber:
 
         while True:
             audio_array = self.audio_manager.read_chunk()
+
+            # Handle audio disconnection during recording
+            if audio_array is None:
+                print("\n⚠️  Audio device disconnected during recording")
+                if frames:
+                    print("🔄 Attempting to save partial recording...")
+                    try:
+                        audio_data = np.hstack(frames)
+                        return audio_data.astype(np.float32) / 32768.0
+                    except:
+                        pass
+                return None
+
             frames.append(audio_array)
 
             # Debug VAD
@@ -548,6 +697,31 @@ class SpeechToText:
                 while lang is None:
                     audio_chunk = self.audio_manager.read_chunk()
 
+                    # Handle audio device disconnection
+                    if audio_chunk is None:
+                        print("⚠️  Audio device disconnected or error occurred")
+                        print("🔄 Attempting to reconnect...")
+
+                        # Attempt to restart the audio stream
+                        reconnect_attempts = 0
+                        while reconnect_attempts < 5:
+                            if self.audio_manager.restart_stream():
+                                print("✅ Audio stream reconnected successfully")
+                                print("🎤 Say 'transcribe' (EN) or 'transcreva' (PT) to begin...")
+                                break
+                            else:
+                                reconnect_attempts += 1
+                                if reconnect_attempts < 5:
+                                    print(f"🔄 Retry {reconnect_attempts}/5 in 2 seconds...")
+                                    time.sleep(2)
+                        else:
+                            print("❌ Failed to reconnect after 5 attempts")
+                            print("💡 Please check your audio devices and restart the application")
+                            return
+
+                        # Continue to next iteration after reconnection
+                        continue
+
                     # Debug audio level
                     if self.debug:
                         audio_level = np.abs(audio_chunk).mean()
@@ -558,6 +732,13 @@ class SpeechToText:
 
                 # Record and transcribe
                 audio = self.transcriber.record_until_silence()
+
+                # Handle recording failure
+                if audio is None:
+                    print("⚠️  Recording failed due to audio disconnection")
+                    # The main loop will handle reconnection on next iteration
+                    continue
+
                 text = self.transcriber.transcribe(audio, lang)
 
                 if text:
@@ -594,6 +775,17 @@ class SpeechToText:
 
 
 def main():
+    # Set up signal handler to prevent terminal freeze
+    def signal_handler(sig, frame):
+        print("\n🛑 Interrupted. Cleaning up...")
+        sys.exit(0)
+
+    signal.signal(signal.SIGINT, signal_handler)
+
+    # Ignore SIGPIPE to prevent crashes on broken audio pipes
+    if hasattr(signal, 'SIGPIPE'):
+        signal.signal(signal.SIGPIPE, signal.SIG_IGN)
+
     parser = argparse.ArgumentParser(description='Speech-to-text with wake word activation')
     parser.add_argument('--model-en', choices=['small', 'large'], default='small',
                         help='English model size (default: small)')
