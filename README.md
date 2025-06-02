@@ -5,13 +5,17 @@ A real-time speech-to-text application that listens for wake words and automatic
 ## Features
 
 - **Wake Word Activation**: Say "transcribe" (English) or "transcreva" (Portuguese) to start recording
+- **Customizable Wake Words**: Set your own wake words via command-line arguments
 - **Auto-Typing**: Transcribed text is automatically typed at your current cursor position
 - **Multi-Language Support**: Works with both English and Portuguese
 - **Real-Time Processing**: Uses VAD (Voice Activity Detection) to detect when you stop speaking
 - **Dual Engine**: Combines Vosk for wake word detection and Whisper for accurate transcription
 - **Audio Amplification**: Automatically amplifies low audio levels for better recognition
+- **Audio Device Recovery**: Automatically reconnects when audio devices (like headphones) disconnect
+- **Sound Alerts**: Plays sounds when transcription starts and completes
 - **Automatic Model Download**: Models are downloaded automatically on first use
 - **Flexible Model Selection**: Choose between small (fast) and large (accurate) models via CLI
+- **Persistent Settings**: Remembers your preferred audio device
 
 ## Requirements
 
@@ -65,13 +69,22 @@ python stt.py --list-devices
 
 # Use specific models
 python stt.py --model-en small --model-pt large --whisper-model base
+
+# Custom wake words
+python stt.py --wake-word-en "record" --wake-word-pt "gravar"
+
+# Reset audio device preference
+python stt.py --reset-audio-device
 ```
 
 **Command-line Options:**
 - `--model-en {small,large}`: English Vosk model size (default: small)
 - `--model-pt {small,large}`: Portuguese Vosk model size (default: small)
 - `--whisper-model {tiny,base,small,medium,large}`: Whisper model size (default: base)
+- `--wake-word-en WORD`: Custom English wake word (default: transcribe)
+- `--wake-word-pt WORD`: Custom Portuguese wake word (default: transcreva)
 - `--list-devices`: List available audio devices and exit
+- `--reset-audio-device`: Reset saved audio device preference
 
 ### Usage Steps
 
@@ -155,6 +168,13 @@ The application automatically downloads the models you select. Here are the avai
 1. Run `python test_vosk.py` to test wake word detection
 2. Speak clearly and pause after the wake word
 3. Try speaking louder or closer to the microphone
+4. Consider using a simpler/shorter wake word
+
+### Audio Device Disconnection
+- The app automatically detects when audio devices disconnect
+- It will attempt to reconnect up to 5 times
+- If the original device is unavailable, it will try to find a similar device
+- To reset device preference: `python stt.py --reset-audio-device`
 
 ### macOS Permissions
 Grant Terminal/Python permissions in:
@@ -164,10 +184,17 @@ Grant Terminal/Python permissions in:
 ## How It Works
 
 1. **Wake Word Detection**: Continuously listens using Vosk models for wake words
-2. **Recording**: Once activated, records audio until silence is detected
-3. **Transcription**: Uses OpenAI Whisper for accurate speech-to-text
-4. **Auto-Typing**: Types the transcribed text at your cursor position
-5. **Feedback**: Plays a sound (macOS) to confirm completion
+2. **Sound Alert**: Plays a sound when wake word is detected
+3. **Recording**: Records audio until silence is detected
+4. **Transcription**: Uses OpenAI Whisper for accurate speech-to-text
+5. **Auto-Typing**: Types the transcribed text at your cursor position
+6. **Feedback**: Plays a sound (macOS) to confirm completion
+
+## Audio Feedback
+
+The application provides audio feedback on macOS:
+- **Tink sound**: When wake word is detected (transcription starts)
+- **Glass sound**: When transcription is complete and text is typed
 
 ## License
 
