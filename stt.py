@@ -488,13 +488,17 @@ class WakeWordDetector:
     """Handles wake word detection using Vosk models."""
 
     def __init__(self, vosk_en: Model, vosk_pt: Model, rate: int,
-                 en_model_name: str, pt_model_name: str, debug: bool = False):
+                 en_model_name: str, pt_model_name: str, 
+                 wake_word_en: str = "transcribe", wake_word_pt: str = "transcreva",
+                 debug: bool = False):
         self.rec_en = KaldiRecognizer(vosk_en, rate)
         self.rec_pt = KaldiRecognizer(vosk_pt, rate)
         self.rec_en.SetWords(True)
         self.rec_pt.SetWords(True)
         self.en_model_name = en_model_name
         self.pt_model_name = pt_model_name
+        self.wake_word_en = wake_word_en
+        self.wake_word_pt = wake_word_pt
         self.debug = debug
 
 
@@ -507,8 +511,8 @@ class WakeWordDetector:
             if text:
                 if self.debug:
                     print(f"[EN MODEL - {self.en_model_name}] → {text}")
-                if "transcribe" in text:
-                    print(f"🟢 Wake word detected: 'transcribe' (using {self.en_model_name})")
+                if self.wake_word_en in text:
+                    print(f"🟢 Wake word detected: '{self.wake_word_en}' (using {self.en_model_name})")
                     return "en"
         else:
             # Get partial results
@@ -524,8 +528,8 @@ class WakeWordDetector:
             if text:
                 if self.debug:
                     print(f"[PT MODEL - {self.pt_model_name}] → {text}")
-                if "transcreva" in text:
-                    print(f"🟢 Wake word detected: 'transcreva' (using {self.pt_model_name})")
+                if self.wake_word_pt in text:
+                    print(f"🟢 Wake word detected: '{self.wake_word_pt}' (using {self.pt_model_name})")
                     return "pt"
         else:
             # Get partial results
@@ -617,6 +621,8 @@ class SpeechToText:
     def __init__(self, args):
         self.args = args
         self.debug = os.environ.get('DEBUG', '').lower() in ('1', 'true', 'yes')
+        self.wake_word_en = args.wake_word_en.lower()
+        self.wake_word_pt = args.wake_word_pt.lower()
 
         # Initialize components
         self.settings_manager = SettingsManager()
@@ -662,6 +668,8 @@ class SpeechToText:
             self.audio_manager.rate,
             self.model_manager.en_model_info['name'],
             self.model_manager.pt_model_info['name'],
+            self.wake_word_en,
+            self.wake_word_pt,
             self.debug
         )
 
@@ -677,12 +685,15 @@ class SpeechToText:
 
     def run(self) -> None:
         """Main application loop"""
-        print("\n🎤 Say 'transcribe' (EN) or 'transcreva' (PT) to begin...")
+        print(f"\n🎤 Say '{self.wake_word_en}' (EN) or '{self.wake_word_pt}' (PT) to begin...")
         print("📌 The transcribed text will be typed at your cursor position")
         print(f"\n🔧 Active Models:")
         print(f"   • Vosk EN: {self.model_manager.en_model_info['name']} ({self.args.model_en})")
         print(f"   • Vosk PT: {self.model_manager.pt_model_info['name']} ({self.args.model_pt})")
         print(f"   • Whisper: {self.args.whisper_model}")
+        print(f"\n🎯 Wake Words:")
+        print(f"   • English: '{self.wake_word_en}'")
+        print(f"   • Portuguese: '{self.wake_word_pt}'")
 
         # Test audio if in debug mode
         self.audio_manager.test_audio()
@@ -707,7 +718,7 @@ class SpeechToText:
                         while reconnect_attempts < 5:
                             if self.audio_manager.restart_stream():
                                 print("✅ Audio stream reconnected successfully")
-                                print("🎤 Say 'transcribe' (EN) or 'transcreva' (PT) to begin...")
+                                print(f"🎤 Say '{self.wake_word_en}' (EN) or '{self.wake_word_pt}' (PT) to begin...")
                                 break
                             else:
                                 reconnect_attempts += 1
@@ -765,7 +776,7 @@ class SpeechToText:
 
                 # Reset for next detection
                 self.wake_word_detector.reset()
-                print("\n🎤 Say 'transcribe' (EN) or 'transcreva' (PT) to begin...")
+                print(f"\n🎤 Say '{self.wake_word_en}' (EN) or '{self.wake_word_pt}' (PT) to begin...")
 
         except KeyboardInterrupt:
             print("🛑 Exiting.")
@@ -797,6 +808,10 @@ def main():
                         help='Portuguese model size (default: small)')
     parser.add_argument('--whisper-model', choices=['tiny', 'base', 'small', 'medium', 'large'],
                         default='base', help='Whisper model size (default: base)')
+    parser.add_argument('--wake-word-en', default='transcribe',
+                        help='English wake word (default: transcribe)')
+    parser.add_argument('--wake-word-pt', default='transcreva',
+                        help='Portuguese wake word (default: transcreva)')
     parser.add_argument('--list-devices', action='store_true',
                         help='List available audio devices and exit')
     parser.add_argument('--reset-audio-device', action='store_true',
