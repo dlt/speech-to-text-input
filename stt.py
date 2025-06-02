@@ -730,6 +730,10 @@ class SpeechToText:
 
                     lang = self.wake_word_detector.detect(audio_chunk.tobytes())
 
+                # Play sound alert when transcription starts
+                if sys.platform == "darwin":
+                    subprocess.run(["afplay", "/System/Library/Sounds/Tink.aiff"], capture_output=True)
+                
                 # Record and transcribe
                 audio = self.transcriber.record_until_silence()
 
