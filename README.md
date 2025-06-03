@@ -4,8 +4,9 @@ A real-time speech-to-text application that listens for wake words and automatic
 
 ## Features
 
+- **System Tray Interface**: Control everything from the system tray - no terminal needed
 - **Wake Word Activation**: Say "transcribe" (English) or "transcreva" (Portuguese) to start recording
-- **Customizable Wake Words**: Set your own wake words via command-line arguments
+- **Customizable Wake Words**: Set your own wake words via command-line arguments or system tray
 - **Auto-Typing**: Transcribed text is automatically typed at your current cursor position
 - **Multi-Language Support**: Works with both English and Portuguese
 - **Real-Time Processing**: Uses VAD (Voice Activity Detection) to detect when you stop speaking
@@ -14,8 +15,10 @@ A real-time speech-to-text application that listens for wake words and automatic
 - **Audio Device Recovery**: Automatically reconnects when audio devices (like headphones) disconnect
 - **Sound Alerts**: Plays sounds when transcription starts and completes
 - **Automatic Model Download**: Models are downloaded automatically on first use
-- **Flexible Model Selection**: Choose between small (fast) and large (accurate) models via CLI
+- **Flexible Model Selection**: Choose between small (fast) and large (accurate) models
 - **Persistent Settings**: Remembers your preferred audio device
+- **Visual Status**: System tray icon changes color to show current state
+- **Comprehensive Debugging**: Extensive logging and diagnostic tools for troubleshooting
 
 ## Requirements
 
@@ -28,7 +31,7 @@ A real-time speech-to-text application that listens for wake words and automatic
 1. Clone the repository:
 ```bash
 git clone <repository-url>
-cd speach-to-text
+cd speech-to-text
 ```
 
 2. Create a virtual environment:
@@ -39,7 +42,12 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 3. Install dependencies:
 ```bash
-pip install pyaudio numpy whisper webrtcvad vosk
+pip install -r requirements.txt
+```
+
+Or manually:
+```bash
+pip install pyaudio numpy whisper webrtcvad vosk pystray pillow
 ```
 
 For non-macOS systems, also install:
@@ -47,31 +55,53 @@ For non-macOS systems, also install:
 pip install pyautogui
 ```
 
+**Note for macOS users**: The system tray uses native macOS dialogs for input. No additional dependencies needed.
+
 The models will be downloaded automatically when you first run the application.
 
 ## Usage
 
 ### Basic Usage
 
-Run with default settings (small models for fast performance):
+Run with system tray interface (recommended):
+```bash
+python stt_tray.py
+```
+
+Or run in classic terminal mode:
 ```bash
 python stt.py
+# or
+python stt_tray.py --no-tray
 ```
+
+### System Tray Mode
+
+When running with `stt_tray.py`, you get:
+- **System tray icon** that shows current status (green=listening, gray=paused, red=recording, orange=processing)
+- **Right-click menu** with all controls:
+  - Toggle listening on/off
+  - Change wake words on the fly
+  - Switch audio devices without restarting
+  - Change models (requires restart)
+  - View current settings
+- **Notifications** for important events
+- **No terminal window** needed after startup
 
 ### Advanced Usage
 
 ```bash
 # Use large models for better accuracy
-python stt.py --model-en large --model-pt large --whisper-model medium
+python stt_tray.py --model-en large --model-pt large --whisper-model medium
 
-# List available audio devices
+# List available audio devices (terminal mode)
 python stt.py --list-devices
 
-# Use specific models
-python stt.py --model-en small --model-pt large --whisper-model base
+# Use specific models with custom wake words
+python stt_tray.py --model-en small --model-pt large --wake-word-en "record"
 
-# Custom wake words
-python stt.py --wake-word-en "record" --wake-word-pt "gravar"
+# Classic terminal mode with all options
+python stt.py --wake-word-en "start" --wake-word-pt "começar"
 
 # Reset audio device preference
 python stt.py --reset-audio-device
@@ -112,16 +142,31 @@ This will show:
 - Partial recognition results
 - Detailed processing information
 
-### Testing Tools
+### Testing & Diagnostic Tools
 
-Test your audio setup:
+The project includes several diagnostic tools to help troubleshoot issues:
+
 ```bash
+# Test basic audio capture
 python test_audio.py
-```
 
-Test Vosk wake word detection:
-```bash
+# Test audio with visual level meter
+python test_tray.py
+
+# Test Vosk wake word detection
 python test_vosk.py
+
+# Test wake word detection with detailed output
+DEBUG=1 python test_wake_word.py
+
+# Test model loading
+python test_models.py
+
+# Test core STT functionality without UI
+python test_stt_core.py
+
+# Show step-by-step debugging guide
+python debug_guide.py
 ```
 
 ## Model Information
@@ -153,9 +198,57 @@ The application automatically downloads the models you select. Here are the avai
 
 ## Troubleshooting
 
+### System Tray Issues
+
+If the system tray version isn't working properly:
+
+1. **Enable debug mode** to see what's happening:
+   ```bash
+   DEBUG=1 python stt_tray_simple.py
+   ```
+
+2. **Run diagnostic tests**:
+   ```bash
+   # Test basic audio capture
+   python test_audio.py
+   
+   # Test audio with visual meter
+   python test_tray.py
+   
+   # Test model loading
+   python test_models.py
+   
+   # Test wake word detection specifically
+   python test_wake_word.py
+   
+   # Test core STT functionality
+   python test_stt_core.py
+   
+   # Show debugging guide
+   python debug_guide.py
+   ```
+
+3. **Check console output** - The tray version shows:
+   - Device selection and name
+   - Model loading status
+   - Audio levels (in debug mode)
+   - Wake word detections
+   - All errors and status updates
+
+4. **Try the simple version** if dialogs aren't working:
+   ```bash
+   python stt_tray_simple.py
+   ```
+
+5. **Common issues**:
+   - No logs after "Listening for wake words..." - Audio may not be working
+   - "Still listening..." messages but no detection - Wake word not being recognized
+   - Icon always green - Normal when listening, should change to red when recording
+   - AttributeError 'reset_audio_device' - Update to latest version of all files
+
 ### Low Audio Levels
 - The app automatically amplifies audio 10x
-- Run `DEBUG=1 python stt.py` to see audio levels
+- Run `DEBUG=1 python stt_tray.py` to see audio levels
 - Check microphone permissions in System Settings
 
 ### Microphone Not Working
@@ -195,6 +288,16 @@ Grant Terminal/Python permissions in:
 The application provides audio feedback on macOS:
 - **Tink sound**: When wake word is detected (transcription starts)
 - **Glass sound**: When transcription is complete and text is typed
+
+## File Structure
+
+- `stt.py` - Core speech-to-text functionality
+- `stt_tray.py` - System tray interface with native dialogs
+- `stt_tray_simple.py` - System tray interface without dialogs (fallback)
+- `run.sh` - Startup script that handles icon generation and fallbacks
+- `generate_icons.py` - Creates system tray icons
+- `test_*.py` - Various diagnostic and testing tools
+- `debug_guide.py` - Interactive debugging guide
 
 ## License
 
