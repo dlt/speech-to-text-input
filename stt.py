@@ -511,15 +511,22 @@ class WakeWordDetector:
             if text:
                 if self.debug:
                     print(f"[EN MODEL - {self.en_model_name}] → {text}")
+                # More flexible wake word matching
                 if self.wake_word_en in text:
-                    print(f"🟢 Wake word detected: '{self.wake_word_en}' (using {self.en_model_name})")
+                    print(f"🟢 Wake word detected: '{self.wake_word_en}' in '{text}' (using {self.en_model_name})")
                     return "en"
+                elif self.debug and text.strip():
+                    print(f"[EN NO MATCH] Looking for '{self.wake_word_en}' in '{text}'")
         else:
             # Get partial results
             if self.debug:
                 partial = json.loads(self.rec_en.PartialResult())
                 if partial.get("partial"):
-                    print(f"[EN PARTIAL] → {partial['partial']}")
+                    partial_text = partial['partial'].lower()
+                    print(f"[EN PARTIAL] → {partial_text}")
+                    # Check if wake word is in partial result
+                    if self.wake_word_en in partial_text:
+                        print(f"[EN PARTIAL MATCH] Found '{self.wake_word_en}' in partial")
 
         # Check Portuguese model
         if self.rec_pt.AcceptWaveform(audio_data):
@@ -529,14 +536,20 @@ class WakeWordDetector:
                 if self.debug:
                     print(f"[PT MODEL - {self.pt_model_name}] → {text}")
                 if self.wake_word_pt in text:
-                    print(f"🟢 Wake word detected: '{self.wake_word_pt}' (using {self.pt_model_name})")
+                    print(f"🟢 Wake word detected: '{self.wake_word_pt}' in '{text}' (using {self.pt_model_name})")
                     return "pt"
+                elif self.debug and text.strip():
+                    print(f"[PT NO MATCH] Looking for '{self.wake_word_pt}' in '{text}'")
         else:
             # Get partial results
             if self.debug:
                 partial = json.loads(self.rec_pt.PartialResult())
                 if partial.get("partial"):
-                    print(f"[PT PARTIAL] → {partial['partial']}")
+                    partial_text = partial['partial'].lower()
+                    print(f"[PT PARTIAL] → {partial_text}")
+                    # Check if wake word is in partial result
+                    if self.wake_word_pt in partial_text:
+                        print(f"[PT PARTIAL MATCH] Found '{self.wake_word_pt}' in partial")
 
         return None
 
@@ -662,6 +675,7 @@ class SpeechToText:
             return False
 
         # Initialize detectors
+        print(f"🔧 Initializing wake word detector with debug={self.debug}")
         self.wake_word_detector = WakeWordDetector(
             self.model_manager.vosk_en,
             self.model_manager.vosk_pt,
@@ -672,6 +686,7 @@ class SpeechToText:
             self.wake_word_pt,
             self.debug
         )
+        print(f"✅ Wake word detector initialized")
 
         self.transcriber = Transcriber(
             self.model_manager.whisper_model,
