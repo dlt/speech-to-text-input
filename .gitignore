@@ -1,18 +1,28 @@
-# Virtual environment
-venv/
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
 
-# Vosk models
+# Models
 vosk-model-*/
+*.zip
 
-# macOS
-.DS_Store
+# Generated files
 
 # IDE
 .vscode/
 .idea/
 *.swp
+*.swo
 
-*.zip
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
 *.log
