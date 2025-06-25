@@ -13,9 +13,15 @@ import urllib.request
 import zipfile
 import signal
 import threading
+import queue
 from typing import Dict, Optional, Tuple, List
 from vosk import Model, KaldiRecognizer
 from pathlib import Path
+try:
+    from pynput import keyboard
+    PYNPUT_AVAILABLE = True
+except ImportError:
+    PYNPUT_AVAILABLE = False
 
 
 # Model configurations
@@ -628,6 +634,123 @@ class Transcriber:
         return result["text"].strip()
 
 
+class KeyboardManager:
+    """Manages global keyboard shortcuts for triggering transcription."""
+    
+    def __init__(self, shortcut: str, trigger_queue: queue.Queue, debug: bool = False):
+        self.shortcut = shortcut
+        self.trigger_queue = trigger_queue
+        self.debug = debug
+        self.listener = None
+        self.current_keys = set()
+        self.shortcut_keys = self._parse_shortcut(shortcut)
+        
+    def _parse_shortcut(self, shortcut: str) -> set:
+        """Parse shortcut string into a set of keys"""
+        keys = set()
+        parts = shortcut.lower().split('+')
+        
+        for part in parts:
+            part = part.strip()
+            if part in ['cmd', 'command']:
+                keys.add('cmd')
+            elif part in ['ctrl', 'control']:
+                keys.add('ctrl')
+            elif part in ['alt', 'option']:
+                keys.add('alt')
+            elif part in ['shift']:
+                keys.add('shift')
+            else:
+                keys.add(part)
+        
+        return keys
+    
+    def _on_press(self, key):
+        """Handle key press events"""
+        try:
+            # Get the key name
+            if hasattr(key, 'char') and key.char:
+                key_name = key.char.lower()
+            elif hasattr(key, 'name'):
+                key_name = key.name.lower()
+            else:
+                return
+            
+            # Map special keys
+            if key == keyboard.Key.cmd:
+                key_name = 'cmd'
+            elif key == keyboard.Key.ctrl:
+                key_name = 'ctrl'
+            elif key == keyboard.Key.alt:
+                key_name = 'alt'
+            elif key == keyboard.Key.shift:
+                key_name = 'shift'
+            
+            self.current_keys.add(key_name)
+            
+            # Check if shortcut is pressed
+            if self.shortcut_keys.issubset(self.current_keys):
+                if self.debug:
+                    print(f"🎹 Keyboard shortcut triggered: {self.shortcut}")
+                self.trigger_queue.put('keyboard')
+                
+        except Exception as e:
+            if self.debug:
+                print(f"❌ Keyboard error: {e}")
+    
+    def _on_release(self, key):
+        """Handle key release events"""
+        try:
+            # Get the key name
+            if hasattr(key, 'char') and key.char:
+                key_name = key.char.lower()
+            elif hasattr(key, 'name'):
+                key_name = key.name.lower()
+            else:
+                return
+            
+            # Map special keys
+            if key == keyboard.Key.cmd:
+                key_name = 'cmd'
+            elif key == keyboard.Key.ctrl:
+                key_name = 'ctrl'
+            elif key == keyboard.Key.alt:
+                key_name = 'alt'
+            elif key == keyboard.Key.shift:
+                key_name = 'shift'
+            
+            self.current_keys.discard(key_name)
+            
+        except Exception as e:
+            if self.debug:
+                print(f"❌ Keyboard error: {e}")
+    
+    def start(self):
+        """Start listening for keyboard events"""
+        if not PYNPUT_AVAILABLE:
+            print("⚠️  pynput not installed. Keyboard shortcuts disabled.")
+            print("   Install with: pip install pynput")
+            return False
+        
+        try:
+            self.listener = keyboard.Listener(
+                on_press=self._on_press,
+                on_release=self._on_release
+            )
+            self.listener.start()
+            print(f"⌨️  Keyboard shortcut enabled: {self.shortcut}")
+            return True
+        except Exception as e:
+            print(f"❌ Failed to start keyboard listener: {e}")
+            print("💡 On macOS, grant accessibility permissions in System Preferences > Security & Privacy > Privacy > Accessibility")
+            return False
+    
+    def stop(self):
+        """Stop the keyboard listener"""
+        if self.listener:
+            self.listener.stop()
+
+
 class SpeechToText:
     """Main speech-to-text application class."""
 
@@ -644,6 +767,8 @@ class SpeechToText:
         self.text_typer = TextTyper()
         self.wake_word_detector = None
         self.transcriber = None
+        self.keyboard_manager = None
+        self.trigger_queue = queue.Queue()
 
 
     def setup(self) -> bool:
@@ -694,6 +819,17 @@ class SpeechToText:
             self.audio_manager,
             debug=self.debug
         )
+        
+        # Initialize keyboard shortcut if specified
+        if self.args.keyboard_shortcut:
+            self.keyboard_manager = KeyboardManager(
+                self.args.keyboard_shortcut,
+                self.trigger_queue,
+                self.debug
+            )
+            if not self.keyboard_manager.start():
+                print("⚠️  Continuing without keyboard shortcuts")
+                self.keyboard_manager = None
 
         return True
 
@@ -701,6 +837,8 @@ class SpeechToText:
     def run(self) -> None:
         """Main application loop"""
         print(f"\n🎤 Say '{self.wake_word_en}' (EN) or '{self.wake_word_pt}' (PT) to begin...")
+        if self.keyboard_manager:
+            print(f"⌨️  Or press {self.args.keyboard_shortcut} to start transcription")
         print("📌 The transcribed text will be typed at your cursor position")
         print(f"\n🔧 Active Models:")
         print(f"   • Vosk EN: {self.model_manager.en_model_info['name']} ({self.args.model_en})")
@@ -718,9 +856,21 @@ class SpeechToText:
 
         try:
             while True:
-                # Detect wake word
+                # Detect wake word or keyboard trigger
                 lang = None
-                while lang is None:
+                triggered_by_keyboard = False
+                
+                while lang is None and not triggered_by_keyboard:
+                    # Check for keyboard trigger (non-blocking)
+                    try:
+                        trigger = self.trigger_queue.get_nowait()
+                        if trigger == 'keyboard':
+                            triggered_by_keyboard = True
+                            # Default to English for keyboard trigger
+                            lang = 'en'
+                            break
+                    except queue.Empty:
+                        pass
                     audio_chunk = self.audio_manager.read_chunk()
 
                     # Handle audio device disconnection
@@ -754,7 +904,8 @@ class SpeechToText:
                         if audio_level > 50:
                             print(f"🔊 Audio level: {audio_level:.0f}")
 
-                    lang = self.wake_word_detector.detect(audio_chunk.tobytes())
+                    if not triggered_by_keyboard:
+                        lang = self.wake_word_detector.detect(audio_chunk.tobytes())
 
                 # Play sound alert when transcription starts
                 if sys.platform == "darwin":
@@ -792,6 +943,8 @@ class SpeechToText:
                 # Reset for next detection
                 self.wake_word_detector.reset()
                 print(f"\n🎤 Say '{self.wake_word_en}' (EN) or '{self.wake_word_pt}' (PT) to begin...")
+                if self.keyboard_manager:
+                    print(f"⌨️  Or press {self.args.keyboard_shortcut} to start transcription")
 
         except KeyboardInterrupt:
             print("🛑 Exiting.")
@@ -801,6 +954,8 @@ class SpeechToText:
                 import traceback
                 traceback.print_exc()
         finally:
+            if self.keyboard_manager:
+                self.keyboard_manager.stop()
             self.audio_manager.cleanup()
 
 
@@ -831,6 +986,8 @@ def main():
                         help='List available audio devices and exit')
     parser.add_argument('--reset-audio-device', action='store_true',
                         help='Reset saved audio device preference')
+    parser.add_argument('--keyboard-shortcut', default=None,
+                        help='Global keyboard shortcut to trigger transcription (e.g., "cmd+shift+t")')
 
     args = parser.parse_args()
 
