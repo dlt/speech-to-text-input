@@ -1,11 +1,12 @@
 # Speech-to-Text Auto-Typer
 
-A real-time speech-to-text application that listens for wake words and automatically types transcribed text at your cursor position. Supports both English and Portuguese languages.
+A real-time speech-to-text application that listens for wake words and automatically types transcribed text at your cursor position. Supports both English and Portuguese languages with global keyboard shortcuts for maximum convenience.
 
 ## Features
 
 - **System Tray Interface**: Control everything from the system tray - no terminal needed
 - **Wake Word Activation**: Say "transcribe" (English) or "transcreva" (Portuguese) to start recording
+- **🆕 Global Keyboard Shortcuts**: Press customizable keyboard shortcuts (e.g., Cmd+Shift+T) from any app to trigger transcription
 - **Customizable Wake Words**: Set your own wake words via command-line arguments or system tray
 - **Auto-Typing**: Transcribed text is automatically typed at your current cursor position
 - **Multi-Language Support**: Works with both English and Portuguese
@@ -22,53 +23,263 @@ A real-time speech-to-text application that listens for wake words and automatic
 
 ## Requirements
 
-- Python 3.7+
-- macOS (for auto-typing functionality) or any OS with pyautogui installed
-- Microphone access
+- **Python 3.7+**
+- **macOS** (for full functionality including auto-typing and keyboard shortcuts) or **Linux/Windows** with additional setup
+- **Microphone access**
+- **For keyboard shortcuts**: Accessibility permissions on macOS
 
 ## Installation
 
-1. Clone the repository:
+### Quick Start (macOS)
+
+1. **Install Python 3.7+** (if not already installed):
+   ```bash
+   # Using Homebrew (recommended)
+   brew install python
+   
+   # Or download from python.org
+   ```
+
+2. **Clone the repository**:
+   ```bash
+   git clone <repository-url>
+   cd speech-to-text
+   ```
+
+3. **Create and activate virtual environment**:
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate
+   ```
+
+4. **Install dependencies**:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+5. **Grant permissions** (will be prompted during first run):
+   - **Microphone access**: System Preferences → Security & Privacy → Privacy → Microphone
+   - **Accessibility access** (for auto-typing): System Preferences → Security & Privacy → Privacy → Accessibility
+   - **For keyboard shortcuts**: Add Terminal or Python to Accessibility permissions
+
+6. **Run the application**:
+   ```bash
+   # With system tray interface (recommended)
+   python stt_tray.py
+   
+   # Or terminal mode with keyboard shortcuts
+   python stt.py --keyboard-shortcut "cmd+shift+t"
+   ```
+
+### Detailed Installation Guide
+
+#### Step 1: Python Installation
+
+**macOS:**
+```bash
+# Method 1: Using Homebrew (recommended)
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+brew install python
+
+# Method 2: Download from python.org
+# Visit https://www.python.org/downloads/ and download Python 3.7+
+```
+
+**Windows:**
+```bash
+# Download from python.org or use winget
+winget install Python.Python.3
+```
+
+**Linux (Ubuntu/Debian):**
+```bash
+sudo apt update
+sudo apt install python3 python3-pip python3-venv python3-dev
+```
+
+#### Step 2: Clone Repository
+
 ```bash
 git clone <repository-url>
 cd speech-to-text
 ```
 
-2. Create a virtual environment:
+#### Step 3: Virtual Environment Setup
+
+**All Platforms:**
 ```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+# Create virtual environment
+python3 -m venv venv
+
+# Activate virtual environment
+# macOS/Linux:
+source venv/bin/activate
+
+# Windows:
+venv\Scripts\activate
 ```
 
-3. Install dependencies:
+#### Step 4: Install Dependencies
+
+**macOS/Linux:**
 ```bash
+# Install main dependencies
 pip install -r requirements.txt
+
+# If you get audio errors, you may need system dependencies:
+# macOS:
+brew install portaudio
+pip install pyaudio
+
+# Linux (Ubuntu/Debian):
+sudo apt install portaudio19-dev python3-pyaudio
+pip install pyaudio
 ```
 
-Or manually:
+**Windows:**
 ```bash
-pip install pyaudio numpy whisper webrtcvad vosk pystray pillow
+# Install main dependencies
+pip install -r requirements.txt
+
+# For Windows, you might need to install pyaudio separately:
+pip install pipwin
+pipwin install pyaudio
 ```
 
-For non-macOS systems, also install:
+#### Step 5: System Permissions (macOS)
+
+The application requires specific permissions on macOS:
+
+1. **Microphone Access**:
+   - System Preferences → Security & Privacy → Privacy → Microphone
+   - Add Terminal (or your Python executable) to the list
+   - Check the box to enable microphone access
+
+2. **Accessibility Access** (for auto-typing):
+   - System Preferences → Security & Privacy → Privacy → Accessibility
+   - Click the lock to make changes
+   - Add Terminal (or your Python executable) to the list
+   - Check the box to enable accessibility access
+
+3. **Input Monitoring** (for keyboard shortcuts):
+   - System Preferences → Security & Privacy → Privacy → Input Monitoring
+   - Add Terminal (or your Python executable) to the list
+   - Check the box to enable input monitoring
+
+#### Step 6: Verify Installation
+
+Test your installation:
+
 ```bash
-pip install pyautogui
+# Activate virtual environment
+source venv/bin/activate  # macOS/Linux
+# or
+venv\Scripts\activate     # Windows
+
+# Test basic functionality
+python test_audio.py
+
+# Test models loading
+python test_models.py
+
+# Run with debug mode to see detailed output
+DEBUG=1 python stt.py --list-devices
 ```
 
-**Note for macOS users**: The system tray uses native macOS dialogs for input. No additional dependencies needed.
+### Alternative Installation Methods
 
-The models will be downloaded automatically when you first run the application.
+#### Using pip directly (not recommended for beginners):
+```bash
+pip install pyaudio numpy openai-whisper webrtcvad vosk pynput pystray pillow pyautogui
+```
+
+#### For developers:
+```bash
+# Clone with development dependencies
+git clone <repository-url>
+cd speech-to-text
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+pip install -e .  # Install in development mode
+```
+
+### Troubleshooting Installation
+
+**Common Issues:**
+
+1. **PyAudio installation fails**:
+   ```bash
+   # macOS:
+   brew install portaudio
+   pip install pyaudio
+   
+   # Linux:
+   sudo apt install portaudio19-dev
+   pip install pyaudio
+   
+   # Windows:
+   pip install pipwin
+   pipwin install pyaudio
+   ```
+
+2. **Permission denied errors**:
+   ```bash
+   # Make sure you're in virtual environment
+   source venv/bin/activate
+   
+   # Or use --user flag
+   pip install --user -r requirements.txt
+   ```
+
+3. **Models don't download**:
+   ```bash
+   # Check internet connection and try:
+   python test_models.py
+   
+   # Or manually create models directory:
+   mkdir models
+   ```
+
+4. **Microphone not detected**:
+   ```bash
+   # List available devices
+   python stt.py --list-devices
+   
+   # Test audio capture
+   python test_audio.py
+   ```
+
+**Getting Help:**
+If you encounter issues during installation:
+1. Run the debug guide: `python debug_guide.py`
+2. Check the detailed logs with: `DEBUG=1 python stt.py`
+3. Test individual components with the test scripts
+
+The models will be downloaded automatically when you first run the application (this may take a few minutes depending on your internet connection).
 
 ## Usage
 
 ### Basic Usage
 
-Run with system tray interface (recommended):
+**Option 1: System Tray Interface (Recommended)**
 ```bash
 python stt_tray.py
 ```
 
-Or run in classic terminal mode:
+**Option 2: Terminal Mode with Keyboard Shortcuts**
+```bash
+# Use Cmd+Shift+T as global shortcut
+python stt.py --keyboard-shortcut "cmd+shift+t"
+
+# Use Ctrl+Alt+S as shortcut
+python stt.py --keyboard-shortcut "ctrl+alt+s"
+
+# Multiple modifiers
+python stt.py --keyboard-shortcut "cmd+shift+ctrl+r"
+```
+
+**Option 3: Classic Terminal Mode (Wake Words Only)**
 ```bash
 python stt.py
 # or
@@ -88,20 +299,60 @@ When running with `stt_tray.py`, you get:
 - **Notifications** for important events
 - **No terminal window** needed after startup
 
+### Keyboard Shortcuts Guide
+
+The new keyboard shortcut feature allows you to trigger transcription from anywhere on your system:
+
+**Supported Key Combinations:**
+- **Modifiers**: `cmd`, `ctrl`, `alt`/`option`, `shift`
+- **Regular keys**: Any letter (a-z), number (0-9)
+- **Format**: Join keys with `+` (e.g., `"cmd+shift+t"`)
+
+**Popular Shortcut Examples:**
+```bash
+# Recommended for macOS
+python stt.py --keyboard-shortcut "cmd+shift+t"
+
+# Alternative for macOS
+python stt.py --keyboard-shortcut "cmd+option+s"
+
+# For users who prefer Ctrl
+python stt.py --keyboard-shortcut "ctrl+alt+r"
+
+# Single modifier shortcuts
+python stt.py --keyboard-shortcut "cmd+t"
+```
+
+**How Keyboard Shortcuts Work:**
+1. Press your configured shortcut from **any application**
+2. System plays a sound to indicate recording started
+3. Speak your text (recording stops automatically when you pause)
+4. Text is typed at your current cursor position
+5. System plays completion sound
+
+**Important Notes:**
+- Keyboard shortcuts default to **English transcription**
+- Works system-wide - no need to focus on terminal
+- Requires **Input Monitoring** permissions on macOS
+- Both wake words and keyboard shortcuts work simultaneously
+
 ### Advanced Usage
 
 ```bash
-# Use large models for better accuracy
+# Use large models with keyboard shortcuts for best accuracy
+python stt.py --keyboard-shortcut "cmd+shift+t" --model-en large --model-pt large --whisper-model medium
+
+# System tray with large models for better accuracy
 python stt_tray.py --model-en large --model-pt large --whisper-model medium
 
 # List available audio devices (terminal mode)
 python stt.py --list-devices
 
-# Use specific models with custom wake words
-python stt_tray.py --model-en small --model-pt large --wake-word-en "record"
+# Use specific models with custom wake words and shortcuts
+python stt.py --keyboard-shortcut "cmd+r" --model-en small --model-pt large --wake-word-en "record"
 
 # Classic terminal mode with all options
-python stt.py --wake-word-en "start" --wake-word-pt "começar"
+python stt.py --wake-word-en "start" --wake-word-pt "começar" --keyboard-shortcut "ctrl+alt+t"
 
 # Reset audio device preference
 python stt.py --reset-audio-device
@@ -113,6 +364,7 @@ python stt.py --reset-audio-device
 - `--whisper-model {tiny,base,small,medium,large}`: Whisper model size (default: base)
 - `--wake-word-en WORD`: Custom English wake word (default: transcribe)
 - `--wake-word-pt WORD`: Custom Portuguese wake word (default: transcreva)
+- `--keyboard-shortcut SHORTCUT`: Global keyboard shortcut (e.g., "cmd+shift+t")
 - `--list-devices`: List available audio devices and exit
 - `--reset-audio-device`: Reset saved audio device preference
 
@@ -124,7 +376,9 @@ python stt.py --reset-audio-device
 
 3. Click where you want the text to appear (text editor, browser, etc.)
 
-4. Say "transcribe" (English) or "transcreva" (Portuguese)
+4. **Trigger transcription using either method:**
+   - **Wake words**: Say "transcribe" (English) or "transcreva" (Portuguese)
+   - **Keyboard shortcut**: Press your configured shortcut (e.g., Cmd+Shift+T)
 
 5. Start speaking - the app will record until you pause
 
@@ -271,13 +525,16 @@ If the system tray version isn't working properly:
 
 ### macOS Permissions
 Grant Terminal/Python permissions in:
-- System Preferences → Security & Privacy → Microphone
-- System Preferences → Security & Privacy → Accessibility (for auto-typing)
+- System Preferences → Security & Privacy → Privacy → Microphone
+- System Preferences → Security & Privacy → Privacy → Accessibility (for auto-typing)
+- System Preferences → Security & Privacy → Privacy → Input Monitoring (for keyboard shortcuts)
 
 ## How It Works
 
-1. **Wake Word Detection**: Continuously listens using Vosk models for wake words
-2. **Sound Alert**: Plays a sound when wake word is detected
+1. **Dual Trigger System**: 
+   - **Wake Word Detection**: Continuously listens using Vosk models for wake words
+   - **Keyboard Shortcuts**: Global hotkey listener using pynput library
+2. **Sound Alert**: Plays a sound when wake word is detected or shortcut is pressed
 3. **Recording**: Records audio until silence is detected
 4. **Transcription**: Uses OpenAI Whisper for accurate speech-to-text
 5. **Auto-Typing**: Types the transcribed text at your cursor position
